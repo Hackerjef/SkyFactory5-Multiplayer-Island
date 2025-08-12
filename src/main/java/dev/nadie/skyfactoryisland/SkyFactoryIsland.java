@@ -1,5 +1,8 @@
 package dev.nadie.skyfactoryisland;
 
+import com.buuz135.together_forever.api.ITogetherTeam;
+import com.buuz135.together_forever.api.TogetherForeverAPI;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.logging.LogUtils;
 
 import dev.nadie.skyfactoryisland.data.Config;
@@ -7,6 +10,7 @@ import dev.nadie.skyfactoryisland.database.DatabaseManager;
 import dev.nadie.skyfactoryisland.database.orm.PlayerIsland;
 import dev.nadie.skyfactoryisland.utils.IslandUtils;
 import dev.nadie.skyfactoryisland.utils.Utils;
+import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -61,40 +65,86 @@ public class SkyFactoryIsland
     }
 
 
+
+    // TODO: Enable logging/messaging for commands n such
     @SubscribeEvent
     public void registerCommands(RegisterCommandsEvent event) {
-        event.getDispatcher().register(
-                Commands.literal("island")
-                        .requires(source -> source.getEntity() instanceof ServerPlayer) // Ensure only players can execute
+        LiteralArgumentBuilder<CommandSourceStack> islandcmd = LiteralArgumentBuilder.literal("island");
+
+        islandcmd
+                .requires(source -> source.getEntity() instanceof ServerPlayer)
+                .executes(context -> {
+                    ServerPlayer player = context.getSource().getPlayerOrException();
+                    ITogetherTeam team = TogetherForeverAPI.getInstance().getPlayerTeam(player.getUUID());
+                    PlayerIsland island = null;
+
+                    if (team != null) {
+                        // If the player is in a team, try to get the island of the team owner
+                        island = IslandUtils.getIslandByPlayerUUID(team.getOwner()).orElse(null);
+                    } else {
+                        // If not in a team, get the player's own island
+                        island = IslandUtils.getIslandByPlayerUUID(player.getUUID()).orElse(null);
+                    }
+
+                    if (island == null) {
+                        return 1;
+                    }
+
+                    // Teleport player to island
+                    player.teleportTo(player.serverLevel(), island.getCoords().getX() + 2, 73, island.getCoords().getZ() + 2, 0, 0);
+                    return 1;
+                });
+
+
+        islandcmd.then(
+                Commands.literal("delete")
                         .executes(context -> {
                             ServerPlayer player = context.getSource().getPlayerOrException();
+                            PlayerIsland island = IslandUtils.getIslandByPlayerUUID(player.getUUID()).orElse(null);
 
-                            PlayerIsland island = null;
+                            if (island == null) {
+                                context.getSource().sendFailure(Component.literal("You do not have an island to delete."));
+                                return 0;
+                            }
+
                             try {
-                                island = DatabaseManager.getInstance().getPlayerIslandDao()
-                                        .queryBuilder()
-                                        .where()
-                                        .eq("playerUUID", player.getUUID())
-                                        .eq("isActive", true)
-                                        .queryForFirst();
+                                island.delete();
+                                DatabaseManager.getInstance().getPlayerIslandDao().update(island);
+                                return 1;
                             } catch (SQLException e) {
-                                // TODO: add message and fail out better
-                                LOGGER.error("Failed to query player island", e);
-                                return 1;
+                                LOGGER.error("Error deleting island for player {}: {}", player.getName().getString(), e.getMessage());
+                                return 0;
                             }
+                        })
+        );
+
+        islandcmd.then(
+                Commands.literal("create")
+                        .executes(context -> {
+                            ServerPlayer player = context.getSource().getPlayerOrException();
+                            ITogetherTeam team = TogetherForeverAPI.getInstance().getPlayerTeam(player.getUUID());
+                            PlayerIsland island = IslandUtils.getIslandByPlayerUUID(player.getUUID()).orElse(null);
+
                             if (island != null) {
-                                // TODO: customize spawn location/make safe :D
-                                // TODO: add message
-                                player.teleportTo(player.serverLevel(), island.getCoords().getX() + 2, 73, island.getCoords().getZ() + 2, 0, 0);
+                                boolean isTeamOwner = Objects.requireNonNull(team).getOwner() == player.getUUID();
+                                String message = isTeamOwner
+                                        ? "You already have an island. Use /island delete to remove it | you are the team owner so remember if you delete it, the team island will be deleted too"
+                                        : "You already have an island. Use /island delete to remove it";
+                                context.getSource().sendFailure(Component.literal(message));
                                 return 1;
                             }
 
-                            // TODO: add tofe support to get island of owner of team, if owner has island teleport, if not tell player that the team owner needs to create the island before continuing, if not on a team, create island for player
+                            if (team != null && team.getOwner() != player.getUUID()) {
+                                context.getSource().sendFailure(Component.literal("Only the team owner can create an island."));
+                                return 1;
+                            }
 
-//                            PlayerIsland island = IslandUtils.createIsland(player);
+                            island = IslandUtils.createIsland(player);
                             return 1;
                         })
         );
+
+        event.getDispatcher().register(islandcmd);
 
         event.getDispatcher().register(
                 Commands.literal("emergency")

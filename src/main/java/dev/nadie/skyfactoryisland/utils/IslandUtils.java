@@ -12,6 +12,7 @@ import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemp
 
 import java.sql.SQLException;
 import java.util.Optional;
+import java.util.UUID;
 
 public class IslandUtils {
     private static final String ISLAND_TEMPLATE_ID = "skyblock_spawn_structure/starting_tree";
@@ -29,6 +30,26 @@ public class IslandUtils {
 
         return island;
     }
+
+    public static Optional<PlayerIsland> getIslandByPlayerUUID(UUID playerUUID) {
+        if (playerUUID == null) {
+            return Optional.empty();
+        }
+        try {
+            return DatabaseManager.getInstance().getPlayerIslandDao()
+                    .queryBuilder()
+                    .where()
+                    .eq("playerUUID", playerUUID)
+                    .and()
+                    .eq("isActive", true)
+                    .query()
+                    .stream()
+                    .findFirst();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
 
     private static void createIslandStructureAndTeleport(ServerPlayer player, PlayerIsland island) {
         ResourceLocation templateId = ResourceLocation.fromNamespaceAndPath("minecraft", ISLAND_TEMPLATE_ID);
