@@ -1,5 +1,6 @@
-package net.micaxs.skyfactoryisland;
+package dev.nadie.skyfactoryisland.data;
 
+import dev.nadie.skyfactoryisland.SkyFactoryIsland;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraftforge.common.ForgeConfigSpec;
@@ -38,7 +39,7 @@ public class Config
             .define("give_checkbook", true);
 
 
-    static final ForgeConfigSpec SPEC = BUILDER.build();
+    public static final ForgeConfigSpec SPEC = BUILDER.build();
 
     public static int islandDistance;
     public static int islandHeight;
