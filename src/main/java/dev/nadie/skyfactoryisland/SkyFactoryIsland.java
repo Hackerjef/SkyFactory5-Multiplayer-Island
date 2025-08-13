@@ -33,6 +33,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 
@@ -80,8 +81,19 @@ public class SkyFactoryIsland
                         // If not in a team, get the player's own island
                         island = IslandUtils.getIslandByPlayerUUID(player.getUUID()).orElse(null);
                     }
-
+                    
                     if (island == null) {
+                        String teamMessage = null;
+                        if (team != null) {
+                            teamMessage = (team.getOwner().equals(player.getUUID())
+                                    ? "You do not have an island. You are the team owner and can create an island for your team using /island create."
+                                    : "You do not have an island. You are in a team. Only the team owner can create an island for the team using /island create. Ask the team owner to create one.");
+                        }
+                        String message = team != null
+                                ? teamMessage
+                                : "You do not have an island. Use /island create to create one";
+
+                        context.getSource().sendFailure(Component.literal(message));
                         return 1;
                     }
 
@@ -122,17 +134,24 @@ public class SkyFactoryIsland
                             ITogetherTeam team = TogetherForeverAPI.getInstance().getPlayerTeam(player.getUUID());
                             PlayerIsland island = IslandUtils.getIslandByPlayerUUID(player.getUUID()).orElse(null);
 
+                            boolean isTeamOwner = team != null && team.getOwner().equals(player.getUUID());
+
                             if (island != null) {
-                                boolean isTeamOwner = Objects.requireNonNull(team).getOwner() == player.getUUID();
-                                String message = isTeamOwner
-                                        ? "You already have an island. Use /island delete to remove it | you are the team owner so remember if you delete it, the team island will be deleted too"
+                                String teamMessage = null;
+                                if (team != null) {
+                                    teamMessage = isTeamOwner
+                                            ? "You already have an island. Use /island delete to remove it | you are the team owner so remember if you delete it, the team island will be deleted too."
+                                            : "You are part of a team that already has an island. Only the team owner can create/delete an island for the team";
+                                }
+                                String message = team != null
+                                        ? teamMessage
                                         : "You already have an island. Use /island delete to remove it";
                                 context.getSource().sendFailure(Component.literal(message));
                                 return 1;
                             }
 
-                            if (team != null && team.getOwner() != player.getUUID()) {
-                                context.getSource().sendFailure(Component.literal("Only the team owner can create an island."));
+                            if (team != null && !isTeamOwner) {
+                                context.getSource().sendFailure(Component.literal("You are not the team owner. Only the team owner can create an island for the team."));
                                 return 1;
                             }
 
