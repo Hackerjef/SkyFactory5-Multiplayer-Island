@@ -62,8 +62,11 @@ public class IslandUtils {
         }
 
         System.out.println("Placing island: " + island.toString());
+
         player.teleportTo(player.serverLevel(), island.getCoords().getX() + 2, 73, island.getCoords().getZ() + 2, 0, 0);
+
         BlockPos pos = new BlockPos(island.getCoords().getX(), island.getCoords().getY(), island.getCoords().getZ());
+
         template.get().placeInWorld(
                 player.serverLevel(),
                 pos,

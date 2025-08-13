@@ -7,6 +7,7 @@ import com.mojang.logging.LogUtils;
 
 import dev.nadie.skyfactoryisland.data.Config;
 import dev.nadie.skyfactoryisland.database.DatabaseManager;
+import dev.nadie.skyfactoryisland.database.orm.PlayerEmergency;
 import dev.nadie.skyfactoryisland.database.orm.PlayerIsland;
 import dev.nadie.skyfactoryisland.utils.IslandUtils;
 import dev.nadie.skyfactoryisland.utils.Utils;
@@ -27,9 +28,8 @@ import net.minecraftforge.fml.config.ModConfig;
 
 import java.sql.SQLException;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
@@ -42,7 +42,6 @@ public class SkyFactoryIsland
 {
     public static final String MODID = "skyfactoryisland";
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final Map<UUID, Long> lastUsageTime = new ConcurrentHashMap<>();
 
     public SkyFactoryIsland(FMLJavaModLoadingContext context)
     {
@@ -64,9 +63,6 @@ public class SkyFactoryIsland
         LOGGER.info("SkyFactory Island Unloaded");
     }
 
-
-
-    // TODO: Enable logging/messaging for commands n such
     @SubscribeEvent
     public void registerCommands(RegisterCommandsEvent event) {
         LiteralArgumentBuilder<CommandSourceStack> islandcmd = LiteralArgumentBuilder.literal("island");
@@ -76,8 +72,7 @@ public class SkyFactoryIsland
                 .executes(context -> {
                     ServerPlayer player = context.getSource().getPlayerOrException();
                     ITogetherTeam team = TogetherForeverAPI.getInstance().getPlayerTeam(player.getUUID());
-                    PlayerIsland island = null;
-
+                    PlayerIsland island;
                     if (team != null) {
                         // If the player is in a team, try to get the island of the team owner
                         island = IslandUtils.getIslandByPlayerUUID(team.getOwner()).orElse(null);
@@ -92,6 +87,7 @@ public class SkyFactoryIsland
 
                     // Teleport player to island
                     player.teleportTo(player.serverLevel(), island.getCoords().getX() + 2, 73, island.getCoords().getZ() + 2, 0, 0);
+                    context.getSource().sendSuccess(() -> Component.literal("Teleported to Island"), false);
                     return 1;
                 });
 
@@ -110,6 +106,7 @@ public class SkyFactoryIsland
                             try {
                                 island.delete();
                                 DatabaseManager.getInstance().getPlayerIslandDao().update(island);
+                                context.getSource().sendSuccess(() -> Component.literal("Island deleted successfully."), false);
                                 return 1;
                             } catch (SQLException e) {
                                 LOGGER.error("Error deleting island for player {}: {}", player.getName().getString(), e.getMessage());
@@ -139,7 +136,8 @@ public class SkyFactoryIsland
                                 return 1;
                             }
 
-                            island = IslandUtils.createIsland(player);
+                            PlayerIsland finalIsland  = IslandUtils.createIsland(player);
+                            context.getSource().sendSuccess(() -> Component.literal("Island created at: " + finalIsland.getCoords().getX() + ", " + finalIsland.getCoords().getY() + ", " + finalIsland.getCoords().getZ()), false);
                             return 1;
                         })
         );
@@ -153,14 +151,37 @@ public class SkyFactoryIsland
                             ServerPlayer player = context.getSource().getPlayerOrException();
                             UUID playerUUID = player.getUUID();
                             long currentTime = System.currentTimeMillis();
-                            long lastUsed = lastUsageTime.getOrDefault(playerUUID, 0L);
 
-                            if (currentTime - lastUsed < TimeUnit.HOURS.toMillis(1)) {
-                                context.getSource().sendFailure(Component.literal("You can only use this command once every hour."));
+                            long lastUsed;
+                            try {
+                                 Optional<PlayerEmergency> data = DatabaseManager.getInstance().getPlayerEmergencyDao()
+                                        .queryBuilder()
+                                        .where()
+                                        .eq("playerUUID", playerUUID)
+                                        .query()
+                                        .stream()
+                                        .findFirst();
+
+                                 if (data.isEmpty()) {
+                                     lastUsed = 0L;
+                                 } else {
+                                     lastUsed = data.get().getTime();
+                                 }
+
+                            } catch (SQLException e) {
+                                throw new RuntimeException(e);
+                            }
+
+                            if (currentTime - lastUsed < TimeUnit.HOURS.toMillis(5)) {
+                                context.getSource().sendFailure(Component.literal("You can only use this command once every five hours."));
                                 return 0;
                             }
 
-                            lastUsageTime.put(playerUUID, currentTime);
+                            try {
+                                DatabaseManager.getInstance().getPlayerEmergencyDao().createOrUpdate(new PlayerEmergency(playerUUID, currentTime));
+                            } catch (SQLException e) {
+                                throw new RuntimeException(e);
+                            }
 
                             String playerName = player.getName().getString();
 

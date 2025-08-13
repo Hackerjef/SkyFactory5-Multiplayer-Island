@@ -5,6 +5,7 @@ import com.j256.ormlite.dao.DaoManager;
 import com.j256.ormlite.jdbc.JdbcConnectionSource;
 import com.j256.ormlite.support.ConnectionSource;
 import com.j256.ormlite.table.TableUtils;
+import dev.nadie.skyfactoryisland.database.orm.PlayerEmergency;
 import dev.nadie.skyfactoryisland.database.orm.PlayerIsland;
 
 import java.io.File;
@@ -15,6 +16,7 @@ public class DatabaseManager {
     private static DatabaseManager instance;
     private ConnectionSource connectionSource;
     private Dao<PlayerIsland, String> playerIslandDao;
+    private Dao<PlayerEmergency, String> playerEmergencyDao;
 
     private DatabaseManager() {
         // Private constructor to prevent direct instantiation
@@ -35,7 +37,9 @@ public class DatabaseManager {
             try {
                 connectionSource = new JdbcConnectionSource(databaseUrl);
                 TableUtils.createTableIfNotExists(connectionSource, PlayerIsland.class);
+                TableUtils.createTableIfNotExists(connectionSource, PlayerEmergency.class);
                 playerIslandDao = DaoManager.createDao(connectionSource, PlayerIsland.class);
+                playerEmergencyDao = DaoManager.createDao(connectionSource, PlayerEmergency.class);
             } catch (SQLException e) {
                 System.err.println("Error initializing database: " + e.getMessage());
                 e.printStackTrace();
@@ -49,6 +53,10 @@ public class DatabaseManager {
 
     public Dao<PlayerIsland, String> getPlayerIslandDao() {
         return playerIslandDao;
+    }
+
+    public Dao<PlayerEmergency, String> getPlayerEmergencyDao() {
+        return playerEmergencyDao;
     }
 
     public void close() {
